@@ -1,0 +1,44 @@
+# Dependencies (rebuilt in container)
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+dist/
+
+# Development files
+.git/
+.gitignore
+*.log
+docker-compose.yml
+Dockerfile.dev
+Dockerfile.monorepo
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+
+# Test files
+*.test.ts
+*.spec.ts
+__tests__/
+tests/
+coverage/
+.vitest/
+
+# Sekuire secrets
+.sekuire/secret.key
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# README (not needed in image)
+README.md

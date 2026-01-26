@@ -1,0 +1,78 @@
+# Sekuire Google Workspace Agent - Local Development Environment
+#
+# USAGE:
+#   Option 1 - Connect to existing Core (if Core is already running):
+#     docker compose up
+#     Agent connects to SEKUIRE_API_URL (default: http://host.docker.internal:5556)
+#
+#   Option 2 - Standalone (full stack in Docker):
+#     docker compose --profile standalone up
+#     Starts Core + Postgres + Redis + Agent
+#
+# Agent: http://localhost:8002
+
+name: google-workspace-agent-dev
+
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8002:8002"
+    environment:
+      SEKUIRE_API_URL: ${SEKUIRE_API_URL:-http://host.docker.internal:5556}
+      SEKUIRE_WORKSPACE_ID: ${SEKUIRE_WORKSPACE_ID:-dev-workspace}
+      DEV_MODE: "true"
+      PORT: "8002"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+
+  # === Standalone Profile Services ===
+  # Use: docker compose --profile standalone up
+
+  sekuire-core:
+    image: sekuire/core:latest
+    profiles: ["standalone"]
+    ports:
+      - "5556:3000"
+    environment:
+      DATABASE_URL: postgres://sekuire:sekuire@postgres:5432/sekuire_dev
+      REDIS_URL: redis://redis:6379
+      DEV_MODE: "true"
+      RUST_LOG: info
+      MOCK_AUTH_USER: dev@sekuire.com
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:15-alpine
+    profiles: ["standalone"]
+    environment:
+      POSTGRES_USER: sekuire
+      POSTGRES_PASSWORD: sekuire
+      POSTGRES_DB: sekuire_dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sekuire -d sekuire_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["standalone"]
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:

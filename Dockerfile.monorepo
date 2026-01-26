@@ -1,0 +1,71 @@
+# Production Build - Monorepo Version
+#
+# USAGE: Build from repo root with SDK included
+#   docker build -f agents/google-workspace-agent/Dockerfile.monorepo -t sekuire/google-workspace-agent .
+#
+# This Dockerfile builds both the SDK and the agent from the monorepo root.
+
+FROM node:22-alpine AS sdk-builder
+WORKDIR /sdk
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY packages/sdks/typescript/package.json packages/sdks/typescript/pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+
+COPY packages/sdks/typescript/ .
+RUN pnpm build
+
+FROM node:22-alpine AS builder
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN apk add --no-cache jq
+
+# Copy package.json and remove @sekuire/sdk dependency (we'll add it manually)
+COPY agents/google-workspace-agent/package.json agents/google-workspace-agent/pnpm-lock.yaml* ./
+RUN jq 'del(.dependencies["@sekuire/sdk"])' package.json > package.json.tmp && mv package.json.tmp package.json
+
+# Install remaining dependencies
+RUN pnpm install --ignore-scripts
+
+# Copy built SDK with its dependencies after pnpm install
+RUN mkdir -p node_modules/@sekuire/sdk
+COPY --from=sdk-builder /sdk/dist ./node_modules/@sekuire/sdk/dist
+COPY --from=sdk-builder /sdk/package.json ./node_modules/@sekuire/sdk/
+COPY --from=sdk-builder /sdk/node_modules ./node_modules
+
+COPY agents/google-workspace-agent/ .
+RUN pnpm build
+
+FROM node:22-alpine AS runtime
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN apk add --no-cache curl jq
+
+RUN addgroup -g 1001 sekuire && adduser -S sekuire -u 1001
+
+# Copy package.json and remove @sekuire/sdk dependency (we'll add it manually)
+COPY agents/google-workspace-agent/package.json agents/google-workspace-agent/pnpm-lock.yaml* ./
+RUN jq 'del(.dependencies["@sekuire/sdk"])' package.json > package.json.tmp && mv package.json.tmp package.json
+RUN pnpm install --prod --ignore-scripts
+
+# Copy SDK with its dependencies after pnpm install
+RUN mkdir -p node_modules/@sekuire/sdk
+COPY --from=sdk-builder /sdk/dist ./node_modules/@sekuire/sdk/dist
+COPY --from=sdk-builder /sdk/package.json ./node_modules/@sekuire/sdk/
+COPY --from=sdk-builder /sdk/node_modules ./node_modules
+
+# Copy built agent
+COPY --from=builder --chown=sekuire:sekuire /app/dist ./dist
+COPY --chown=sekuire:sekuire agents/google-workspace-agent/prompts ./prompts
+COPY --chown=sekuire:sekuire agents/google-workspace-agent/sekuire.yml agents/google-workspace-agent/tools.json ./
+
+USER sekuire
+
+ENV NODE_ENV=production
+ENV PORT=8002
+EXPOSE 8002
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8002/health || exit 1
+
+CMD ["node", "dist/index.js"]

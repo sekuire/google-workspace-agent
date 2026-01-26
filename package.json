@@ -1,0 +1,33 @@
+{
+  "name": "@sekuire/google-workspace-agent",
+  "version": "1.0.0",
+  "description": "Sekuire AI Agent for Google Workspace - Create, edit, and manage Google Docs",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome lint src/",
+    "format": "biome format src/ --write"
+  },
+  "dependencies": {
+    "@sekuire/sdk": "^0.2.0",
+    "express": "^5.0.0",
+    "googleapis": "^144.0.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

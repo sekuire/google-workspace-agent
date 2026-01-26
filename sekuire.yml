@@ -1,0 +1,75 @@
+project:
+  name: google-workspace-agent
+  version: 1.0.0
+  description: Sekuire AI Agent for Google Workspace - Create, edit, and manage Google Docs
+  sekuire_id: 72ad085ff800d8983a33354a4065646175f80d9102a4fcf9269edcdb417008ed
+identity:
+  model: gemini-1.5-flash
+  system_prompt_path: prompts/system.md
+  tools_path: tools.json
+agent:
+  name: google-workspace-agent
+  llm:
+    provider: google
+    model: gemini-1.5-flash
+    api_key_env: GOOGLE_API_KEY
+    temperature: 0.3
+    max_tokens: 8192
+capabilities:
+  provides:
+  - google:docs:create
+  - google:docs:read
+  - google:docs:update
+  - google:docs:append
+  - google:docs:list
+  - google:drive:search
+  requires: []
+  delegates_to: []
+a2a:
+  upstream_url: http://localhost:8002/a2a/tasks
+  public_base_url: http://localhost:8002
+  timeout_ms: 60000
+permissions:
+  network:
+    allowed_hosts:
+    - '*.googleapis.com'
+    - accounts.google.com
+    - oauth2.googleapis.com
+    - localhost
+    blocked_hosts: []
+  filesystem:
+    allowed_paths:
+    - ./data
+    - ./credentials
+    blocked_paths:
+    - /etc
+    - /root
+rate_limits:
+  requests:
+    max_per_minute: 60
+    max_per_hour: 500
+  tokens:
+    max_per_minute: 50000
+    max_per_hour: 200000
+deployment:
+  env:
+  - name: GOOGLE_CLIENT_ID
+    required: true
+    secret: true
+  - name: GOOGLE_CLIENT_SECRET
+    required: true
+    secret: true
+  - name: GOOGLE_REFRESH_TOKEN
+    required: true
+    secret: true
+  - name: GOOGLE_API_KEY
+    required: true
+    secret: true
+  - name: SEKUIRE_WORKSPACE_ID
+    required: true
+  - name: SEKUIRE_API_URL
+    required: false
+    default: http://localhost:5556
+  - name: PORT
+    required: false
+    default: '8002'

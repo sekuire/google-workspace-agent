@@ -1,0 +1,118 @@
+[
+  {
+    "name": "create_document",
+    "description": "Create a new Google Doc with the specified title and optional content",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The title of the new document"
+        },
+        "content": {
+          "type": "string",
+          "description": "Initial content to add to the document (optional)"
+        },
+        "folder_id": {
+          "type": "string",
+          "description": "Google Drive folder ID to create the document in (optional)"
+        }
+      },
+      "required": ["title"]
+    }
+  },
+  {
+    "name": "read_document",
+    "description": "Read the content of a Google Doc by its ID",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "description": "The ID of the Google Doc to read"
+        }
+      },
+      "required": ["document_id"]
+    }
+  },
+  {
+    "name": "update_document",
+    "description": "Update the content of an existing Google Doc - replaces the entire content",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "description": "The ID of the Google Doc to update"
+        },
+        "content": {
+          "type": "string",
+          "description": "The new content to replace the document with"
+        }
+      },
+      "required": ["document_id", "content"]
+    }
+  },
+  {
+    "name": "append_to_document",
+    "description": "Append content to the end of an existing Google Doc",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "description": "The ID of the Google Doc to append to"
+        },
+        "content": {
+          "type": "string",
+          "description": "The content to append to the document"
+        }
+      },
+      "required": ["document_id", "content"]
+    }
+  },
+  {
+    "name": "list_documents",
+    "description": "List Google Docs, optionally filtered by folder or search query",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "folder_id": {
+          "type": "string",
+          "description": "Google Drive folder ID to list documents from (optional)"
+        },
+        "query": {
+          "type": "string",
+          "description": "Search query to filter documents (optional)"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Maximum number of documents to return (default: 20)"
+        }
+      }
+    }
+  },
+  {
+    "name": "search_drive",
+    "description": "Search Google Drive for files matching a query",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query for Google Drive"
+        },
+        "file_type": {
+          "type": "string",
+          "enum": ["document", "spreadsheet", "presentation", "any"],
+          "description": "Type of files to search for (default: any)"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Maximum number of results to return (default: 20)"
+        }
+      },
+      "required": ["query"]
+    }
+  }
+]
