@@ -2,14 +2,16 @@ import type { Request, Response, Application } from "express";
 import type { Agent, SekuireSDK } from "@sekuire/sdk";
 import { GoogleWorkspaceHandler, type A2ATaskRequest } from "./a2a/handler.js";
 import { GoogleDocsTools } from "./tools/google-docs.js";
-import { GoogleWorkspaceClient } from "./google-client.js";
+import { GoogleClientFactory } from "./google-factory.js";
+import type { StateStorage } from "./storage/index.js";
 
 export interface ServerConfig {
   port: number;
   agentId: string;
   workspaceId: string;
   apiUrl: string;
-  googleClient: GoogleWorkspaceClient;
+  clientFactory: GoogleClientFactory;
+  storage: StateStorage;
   agent?: Agent;
   sdk?: SekuireSDK;
 }
@@ -17,7 +19,6 @@ export interface ServerConfig {
 export class GoogleWorkspaceServer {
   private app: Application;
   private config: ServerConfig;
-  private handler: GoogleWorkspaceHandler;
   private startTime: number;
   private requestCount = 0;
 
@@ -25,9 +26,6 @@ export class GoogleWorkspaceServer {
     this.app = app;
     this.config = config;
     this.startTime = Date.now();
-
-    const tools = new GoogleDocsTools(config.googleClient);
-    this.handler = new GoogleWorkspaceHandler(tools, config.agent);
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -49,6 +47,11 @@ export class GoogleWorkspaceServer {
     this.app.post("/a2a/tasks", this.handleA2ATask.bind(this));
     this.app.post("/sekuire/handshake", this.handleHandshake.bind(this));
     this.app.get("/sekuire/hello", this.handleHello.bind(this));
+
+    this.app.get("/auth/google", this.handleAuthStart.bind(this));
+    this.app.get("/auth/google/callback", this.handleAuthCallback.bind(this));
+    this.app.get("/auth/users", this.handleListUsers.bind(this));
+    this.app.delete("/auth/users/:userId", this.handleRemoveUser.bind(this));
   }
 
   private handleHealth(_req: Request, res: Response): void {
@@ -61,29 +64,41 @@ export class GoogleWorkspaceServer {
     });
   }
 
-  private handleMetrics(_req: Request, res: Response): void {
+  private async handleMetrics(_req: Request, res: Response): Promise<void> {
     const memUsage = process.memoryUsage();
+    const users = await this.config.clientFactory.listUsers();
 
     res.json({
       uptime_seconds: Math.floor((Date.now() - this.startTime) / 1000),
       requests_total: this.requestCount,
-      tasks_processed: this.handler.getTaskCount(),
+      connected_users: users.length,
       memory_mb: Math.round(memUsage.heapUsed / 1024 / 1024),
       cpu_percent: 0,
     });
   }
 
-  private handleAgentInfo(_req: Request, res: Response): void {
+  private async handleAgentInfo(_req: Request, res: Response): Promise<void> {
+    const users = await this.config.clientFactory.listUsers();
+
     res.json({
       sekuire_id: this.config.agentId,
       name: "Google Workspace Agent",
       version: "1.0.0",
       description: "Sekuire AI Agent for Google Workspace - Create, edit, and manage Google Docs",
-      capabilities: this.handler.getCapabilities(),
+      capabilities: [
+        "google:docs:create",
+        "google:docs:read",
+        "google:docs:update",
+        "google:docs:append",
+        "google:docs:list",
+        "google:drive:search",
+        "task:chat",
+      ],
       tools: ["create_document", "read_document", "update_document", "append_to_document", "list_documents", "search_drive"],
       status: "running",
       workspace_id: this.config.workspaceId,
       api_url: this.config.apiUrl,
+      connected_users: users.map((u) => ({ userId: u.userId, email: u.email })),
       endpoints: {
         health: "/health",
         metrics: "/metrics",
@@ -91,6 +106,9 @@ export class GoogleWorkspaceServer {
         agent_card: "/.well-known/agent.json",
         agent_info: "/agent/info",
         handshake: "/sekuire/handshake",
+        auth_start: "/auth/google",
+        auth_callback: "/auth/google/callback",
+        auth_users: "/auth/users",
       },
     });
   }
@@ -113,11 +131,39 @@ export class GoogleWorkspaceServer {
         return;
       }
 
-      const result = await this.handler.handleTask(taskRequest);
+      const userEmail = taskRequest.context?.user_email as string | undefined;
+      const userId = taskRequest.context?.user_id as string | undefined;
+
+      let client = null;
+      if (userId) {
+        client = await this.config.clientFactory.getClientForUser(userId);
+      } else if (userEmail) {
+        client = await this.config.clientFactory.getClientForEmail(userEmail);
+      }
+
+      if (!client) {
+        res.status(401).json({
+          task_id: taskRequest.task_id || "unknown",
+          status: "failed",
+          error: {
+            code: "user_not_authorized",
+            message: userEmail || userId
+              ? `User not authorized. Please connect Google account first via /auth/google`
+              : "Missing user_email or user_id in task context",
+          },
+          execution_time_ms: Date.now() - startTime,
+        });
+        return;
+      }
+
+      const tools = new GoogleDocsTools(client);
+      const handler = new GoogleWorkspaceHandler(tools, this.config.agent);
+      const result = await handler.handleTask(taskRequest);
 
       this.config.sdk?.log("tool_execution", {
         tool: taskRequest.type || "task:chat",
         task_id: taskRequest.task_id,
+        user_email: userEmail,
         status: result.status,
         duration_ms: Date.now() - startTime,
       }, result.status === "completed" ? "info" : "error");
@@ -142,13 +188,73 @@ export class GoogleWorkspaceServer {
     }
   }
 
+  private handleAuthStart(req: Request, res: Response): void {
+    const state = req.query.state as string | undefined;
+    const authUrl = this.config.clientFactory.getAuthUrl(state);
+    res.redirect(authUrl);
+  }
+
+  private async handleAuthCallback(req: Request, res: Response): Promise<void> {
+    const code = req.query.code as string | undefined;
+    const error = req.query.error as string | undefined;
+
+    if (error) {
+      res.status(400).json({
+        error: "oauth_error",
+        message: error,
+      });
+      return;
+    }
+
+    if (!code) {
+      res.status(400).json({
+        error: "missing_code",
+        message: "No authorization code received",
+      });
+      return;
+    }
+
+    try {
+      const token = await this.config.clientFactory.handleOAuthCallback(code);
+      res.json({
+        success: true,
+        message: "Google account connected successfully",
+        user: {
+          userId: token.userId,
+          email: token.email,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({
+        error: "token_exchange_failed",
+        message: err instanceof Error ? err.message : "Failed to exchange authorization code",
+      });
+    }
+  }
+
+  private async handleListUsers(_req: Request, res: Response): Promise<void> {
+    const users = await this.config.clientFactory.listUsers();
+    res.json({
+      users: users.map((u) => ({
+        userId: u.userId,
+        email: u.email,
+        createdAt: new Date(u.createdAt).toISOString(),
+        updatedAt: new Date(u.updatedAt).toISOString(),
+      })),
+    });
+  }
+
+  private async handleRemoveUser(req: Request, res: Response): Promise<void> {
+    const userId = req.params.userId as string;
+    await this.config.clientFactory.removeUser(userId);
+    res.json({ success: true, message: `User ${userId} removed` });
+  }
+
   private handleHandshake(req: Request, res: Response): void {
-    const { client_nonce, client_id } = req.body as { client_nonce?: string; client_id?: string };
+    const { client_nonce } = req.body as { client_nonce?: string };
 
     if (!client_nonce) {
-      res.status(400).json({
-        error: "Missing client_nonce",
-      });
+      res.status(400).json({ error: "Missing client_nonce" });
       return;
     }
 
@@ -160,7 +266,15 @@ export class GoogleWorkspaceServer {
       client_nonce: client_nonce,
       signature: `sig_placeholder_${client_nonce.slice(0, 8)}`,
       timestamp: new Date().toISOString(),
-      capabilities: this.handler.getCapabilities(),
+      capabilities: [
+        "google:docs:create",
+        "google:docs:read",
+        "google:docs:update",
+        "google:docs:append",
+        "google:docs:list",
+        "google:drive:search",
+        "task:chat",
+      ],
     });
   }
 
@@ -168,13 +282,30 @@ export class GoogleWorkspaceServer {
     res.json({
       agent_id: this.config.agentId,
       protocol_version: "1.0",
-      capabilities: this.handler.getCapabilities(),
+      capabilities: [
+        "google:docs:create",
+        "google:docs:read",
+        "google:docs:update",
+        "google:docs:append",
+        "google:docs:list",
+        "google:drive:search",
+        "task:chat",
+      ],
       status: "ready",
     });
   }
 
   private handleAgentCard(_req: Request, res: Response): void {
-    const capabilities = this.handler.getCapabilities();
+    const capabilities = [
+      "google:docs:create",
+      "google:docs:read",
+      "google:docs:update",
+      "google:docs:append",
+      "google:docs:list",
+      "google:drive:search",
+      "task:chat",
+    ];
+
     const skills = capabilities.map((cap) => ({
       id: cap,
       name: cap.replace(/:/g, " ").replace(/_/g, " "),
@@ -227,11 +358,16 @@ export class GoogleWorkspaceServer {
       console.log(`   Tasks:       http://localhost:${port}/a2a/tasks`);
       console.log(`   Agent Card:  http://localhost:${port}/.well-known/agent.json`);
       console.log(`   Info:        http://localhost:${port}/agent/info`);
-      console.log(`   Handshake:   http://localhost:${port}/sekuire/handshake`);
+      console.log(`   Auth:        http://localhost:${port}/auth/google`);
+      console.log(`   Users:       http://localhost:${port}/auth/users`);
       console.log(`\n[Capabilities]`);
-      for (const cap of this.handler.getCapabilities()) {
-        console.log(`   - ${cap}`);
-      }
+      console.log(`   - google:docs:create`);
+      console.log(`   - google:docs:read`);
+      console.log(`   - google:docs:update`);
+      console.log(`   - google:docs:append`);
+      console.log(`   - google:docs:list`);
+      console.log(`   - google:drive:search`);
+      console.log(`   - task:chat`);
       console.log(`\n[Google Workspace Agent] Ready and listening on port ${port}`);
     });
   }

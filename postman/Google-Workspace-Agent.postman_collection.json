@@ -1,0 +1,381 @@
+{
+  "info": {
+    "name": "Google Workspace Agent",
+    "description": "Sekuire Google Workspace Agent API for managing Google Docs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8002",
+      "type": "string"
+    },
+    {
+      "key": "userEmail",
+      "value": "joel@vwaza.com",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Info",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          }
+        },
+        {
+          "name": "Metrics",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/metrics"
+          }
+        },
+        {
+          "name": "Agent Info",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/agent/info"
+          }
+        },
+        {
+          "name": "Agent Card",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/.well-known/agent.json"
+          }
+        },
+        {
+          "name": "Hello",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/sekuire/hello"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Start OAuth Flow",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/auth/google",
+            "description": "Open in browser to start OAuth flow"
+          }
+        },
+        {
+          "name": "List Connected Users",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/auth/users"
+          }
+        },
+        {
+          "name": "Remove User",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/auth/users/{{userId}}",
+            "description": "Replace {{userId}} with actual user ID"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Google Docs",
+      "item": [
+        {
+          "name": "Create Document",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"create-doc-{{$timestamp}}\",\n  \"type\": \"google:docs:create\",\n  \"input\": {\n    \"title\": \"Test Document\",\n    \"content\": \"Hello from Sekuire!\"\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Document in Folder",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"create-doc-folder-{{$timestamp}}\",\n  \"type\": \"google:docs:create\",\n  \"input\": {\n    \"title\": \"Document in Folder\",\n    \"content\": \"This document is in a specific folder\",\n    \"folder_id\": \"YOUR_FOLDER_ID\"\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Read Document",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"read-doc-{{$timestamp}}\",\n  \"type\": \"google:docs:read\",\n  \"input\": {\n    \"document_id\": \"YOUR_DOCUMENT_ID\"\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Document",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"update-doc-{{$timestamp}}\",\n  \"type\": \"google:docs:update\",\n  \"input\": {\n    \"document_id\": \"YOUR_DOCUMENT_ID\",\n    \"content\": \"This is the new content that replaces everything\"\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Append to Document",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"append-doc-{{$timestamp}}\",\n  \"type\": \"google:docs:append\",\n  \"input\": {\n    \"document_id\": \"YOUR_DOCUMENT_ID\",\n    \"content\": \"This content is appended to the end\"\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "List Documents",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"list-docs-{{$timestamp}}\",\n  \"type\": \"google:docs:list\",\n  \"input\": {\n    \"limit\": 10\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "List Documents in Folder",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"list-docs-folder-{{$timestamp}}\",\n  \"type\": \"google:docs:list\",\n  \"input\": {\n    \"folder_id\": \"YOUR_FOLDER_ID\",\n    \"limit\": 20\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Search Documents by Name",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"search-docs-{{$timestamp}}\",\n  \"type\": \"google:docs:list\",\n  \"input\": {\n    \"query\": \"meeting notes\",\n    \"limit\": 10\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Google Drive",
+      "item": [
+        {
+          "name": "Search Drive - All Types",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"search-drive-{{$timestamp}}\",\n  \"type\": \"google:drive:search\",\n  \"input\": {\n    \"query\": \"project\",\n    \"limit\": 20\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Search Drive - Documents Only",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"search-docs-only-{{$timestamp}}\",\n  \"type\": \"google:drive:search\",\n  \"input\": {\n    \"query\": \"report\",\n    \"file_type\": \"document\",\n    \"limit\": 10\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Search Drive - Spreadsheets Only",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"search-sheets-{{$timestamp}}\",\n  \"type\": \"google:drive:search\",\n  \"input\": {\n    \"query\": \"budget\",\n    \"file_type\": \"spreadsheet\",\n    \"limit\": 10\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Search Drive - Presentations Only",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"search-slides-{{$timestamp}}\",\n  \"type\": \"google:drive:search\",\n  \"input\": {\n    \"query\": \"presentation\",\n    \"file_type\": \"presentation\",\n    \"limit\": 10\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Natural Language (Chat)",
+      "item": [
+        {
+          "name": "Chat - Create Doc",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"chat-{{$timestamp}}\",\n  \"type\": \"task:chat\",\n  \"input\": {\n    \"message\": \"Create a new document called Meeting Notes\"\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Chat - List Docs",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"chat-list-{{$timestamp}}\",\n  \"type\": \"task:chat\",\n  \"input\": {\n    \"message\": \"List my recent documents\"\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Chat - Search",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/a2a/tasks",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"chat-search-{{$timestamp}}\",\n  \"type\": \"task:chat\",\n  \"input\": {\n    \"message\": \"Search for files about quarterly report\"\n  },\n  \"context\": {\n    \"user_email\": \"{{userEmail}}\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sekuire Protocol",
+      "item": [
+        {
+          "name": "Handshake",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/sekuire/handshake",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_nonce\": \"test-nonce-{{$timestamp}}\",\n  \"client_id\": \"postman-test-client\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

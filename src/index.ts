@@ -2,7 +2,14 @@ import "dotenv/config";
 import express from "express";
 import { getAgent, SekuireCrypto, SekuireSDK, TaskWorker } from "@sekuire/sdk";
 import { GoogleWorkspaceServer } from "./server.js";
-import { GoogleWorkspaceClient } from "./google-client.js";
+import { GoogleClientFactory } from "./google-factory.js";
+import {
+  InMemoryStateStorage,
+  CloudflareKVStorage,
+  CloudflareD1Memory,
+  type StateStorage,
+  type MemoryStorage,
+} from "./storage/index.js";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -17,7 +24,7 @@ interface Config {
   google: {
     clientId: string;
     clientSecret: string;
-    refreshToken: string;
+    redirectUri: string;
   };
 }
 
@@ -61,11 +68,11 @@ async function loadConfig(): Promise<Config> {
 
   const googleClientId = process.env.GOOGLE_CLIENT_ID;
   const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const googleRefreshToken = process.env.GOOGLE_REFRESH_TOKEN;
 
-  if (!googleClientId || !googleClientSecret || !googleRefreshToken) {
+  if (!googleClientId || !googleClientSecret) {
     console.error("[Config] Missing Google OAuth credentials");
-    console.error("   Required: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN");
+    console.error("   Required: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET");
+    console.error("   Users will connect their accounts via /auth/google");
     process.exit(1);
   }
 
@@ -75,6 +82,8 @@ async function loadConfig(): Promise<Config> {
     console.log(`[Config] Calculated Sekuire ID: ${agentId}`);
   }
 
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `http://localhost:${port}/auth/google/callback`;
+
   return {
     port,
     agentId,
@@ -83,12 +92,49 @@ async function loadConfig(): Promise<Config> {
     google: {
       clientId: googleClientId,
       clientSecret: googleClientSecret,
-      refreshToken: googleRefreshToken,
+      redirectUri,
     },
   };
 }
 
-async function initializeAgent() {
+function initializeStorage(): { state: StateStorage; memory: MemoryStorage | null } {
+  const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const cfApiToken = process.env.CLOUDFLARE_API_TOKEN;
+  const cfKvNamespaceId = process.env.CLOUDFLARE_KV_NAMESPACE_ID;
+  const cfD1DatabaseId = process.env.CLOUDFLARE_D1_DATABASE_ID;
+
+  let state: StateStorage;
+  let memory: MemoryStorage | null = null;
+
+  if (cfAccountId && cfApiToken && cfKvNamespaceId) {
+    state = new CloudflareKVStorage({
+      accountId: cfAccountId,
+      apiToken: cfApiToken,
+      namespaceId: cfKvNamespaceId,
+    });
+    console.log("[Storage] Cloudflare KV initialized for state/tokens");
+  } else {
+    state = new InMemoryStateStorage();
+    console.log("[Storage] In-memory storage initialized for state/tokens");
+    console.log("[Storage] Set CLOUDFLARE_KV_NAMESPACE_ID for persistent storage");
+  }
+
+  if (cfAccountId && cfApiToken && cfD1DatabaseId) {
+    memory = new CloudflareD1Memory({
+      accountId: cfAccountId,
+      apiToken: cfApiToken,
+      databaseId: cfD1DatabaseId,
+    });
+    console.log("[Storage] Cloudflare D1 initialized for memory/context");
+  } else {
+    console.log("[Storage] No D1 configured - memory will use SDK default");
+    console.log("[Storage] Set CLOUDFLARE_D1_DATABASE_ID for persistent memory");
+  }
+
+  return { state, memory };
+}
+
+async function initializeAgent(memory: MemoryStorage | null) {
   try {
     if (!process.env.GOOGLE_API_KEY) {
       console.warn("[Agent] No GOOGLE_API_KEY set - agent will run in tool-only mode");
@@ -98,7 +144,8 @@ async function initializeAgent() {
     const projectRoot = path.resolve(__dirname, "..");
     const configPath = path.join(projectRoot, "sekuire.yml");
 
-    const agent = await getAgent(undefined, undefined, configPath);
+    const overrides = memory ? { memory } : undefined;
+    const agent = await getAgent(undefined, overrides, configPath);
     console.log(`[Agent] Initialized with Gemini (${agent.getLLMProvider()})`);
     return agent;
   } catch (error) {
@@ -133,17 +180,28 @@ async function main() {
     apiKey: process.env.SEKUIRE_API_KEY,
   });
 
-  const googleClient = new GoogleWorkspaceClient(config.google);
-  console.log("[Google] Client initialized");
+  const { state: storage, memory } = initializeStorage();
 
-  const agent = await initializeAgent();
+  const clientFactory = new GoogleClientFactory(
+    {
+      clientId: config.google.clientId,
+      clientSecret: config.google.clientSecret,
+      redirectUri: config.google.redirectUri,
+    },
+    storage
+  );
+  console.log("[Google] Client factory initialized");
+  console.log(`[Google] OAuth redirect URI: ${config.google.redirectUri}`);
+
+  const agent = await initializeAgent(memory);
 
   const app = express();
   app.use(express.json());
 
   const server = new GoogleWorkspaceServer(app, {
     ...config,
-    googleClient,
+    clientFactory,
+    storage,
     agent,
     sdk,
   });

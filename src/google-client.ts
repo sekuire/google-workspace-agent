@@ -1,10 +1,4 @@
-import { google, docs_v1, drive_v3 } from "googleapis";
-
-export interface GoogleClientConfig {
-  clientId: string;
-  clientSecret: string;
-  refreshToken: string;
-}
+import { google, docs_v1, drive_v3, Auth } from "googleapis";
 
 export interface DocumentInfo {
   id: string;
@@ -34,18 +28,9 @@ export class GoogleWorkspaceClient {
   private docs: docs_v1.Docs;
   private drive: drive_v3.Drive;
 
-  constructor(config: GoogleClientConfig) {
-    const oauth2Client = new google.auth.OAuth2(
-      config.clientId,
-      config.clientSecret
-    );
-
-    oauth2Client.setCredentials({
-      refresh_token: config.refreshToken,
-    });
-
-    this.docs = google.docs({ version: "v1", auth: oauth2Client });
-    this.drive = google.drive({ version: "v3", auth: oauth2Client });
+  constructor(auth: Auth.OAuth2Client) {
+    this.docs = google.docs({ version: "v1", auth });
+    this.drive = google.drive({ version: "v3", auth });
   }
 
   async createDocument(
