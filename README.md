@@ -77,10 +77,65 @@ pnpm dev
 pnpm build && pnpm start
 ```
 
+## Quick Start (Hosted Version)
+
+If you just want to test the deployed version, you can use it right away - no setup required.
+
+We recommend using [Postman](https://www.postman.com/) for testing the API.
+
+### 1. Connect Your Google Account
+
+Open the following URL in your browser:
+
+```
+https://google-workspace-agent.sekuire.ai/auth/google
+```
+
+You will be redirected to Google's consent screen. Grant access to:
+- Google Docs (create, read, update)
+- Google Drive (search)
+- User info (email, profile)
+
+After authorization, you'll see a confirmation:
+
+```json
+{
+  "success": true,
+  "message": "Google account connected successfully",
+  "user": { "userId": "...", "email": "user@example.com" }
+}
+```
+
+### 2. Send Tasks to the Agent
+
+Once connected, send tasks to the A2A endpoint. Include your email in the context:
+
+**Endpoint:** `POST https://google-workspace-agent.sekuire.ai/a2a/tasks`
+
+```json
+{
+  "task_id": "task-123",
+  "type": "google:docs:create",
+  "input": {
+    "title": "Meeting Notes",
+    "content": "# Meeting Notes\n\nDate: Today"
+  },
+  "context": {
+    "user_email": "user@example.com"
+  }
+}
+```
+
+The `user_email` in the context must match an authorized Google account.
+
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/auth/google` | GET | Start Google OAuth flow |
+| `/auth/google/callback` | GET | OAuth callback (handled automatically) |
+| `/auth/users` | GET | List connected users |
+| `/auth/users/:userId` | DELETE | Remove a connected user |
 | `/health` | GET | Health check |
 | `/metrics` | GET | Agent metrics |
 | `/agent/info` | GET | Agent capabilities |
