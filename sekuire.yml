@@ -26,8 +26,8 @@ capabilities:
   requires: []
   delegates_to: []
 a2a:
-  upstream_url: http://localhost:8002/a2a/tasks
-  public_base_url: http://localhost:8002
+  upstream_url: https://google-workspace-agent-g72k2qjsla-uc.a.run.app/a2a/tasks
+  public_base_url: https://google-workspace-agent-g72k2qjsla-uc.a.run.app
   timeout_ms: 60000
 permissions:
   network:
