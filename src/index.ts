@@ -219,6 +219,13 @@ async function main() {
 	await sdk.start();
 	console.log("[Sekuire] SDK started - heartbeat and logging active");
 
+	const installCreds = sdk.getInstallationCredentials();
+	if (installCreds) {
+		console.log("[Sekuire] Installation credentials available for recovery:");
+		console.log(`   SEKUIRE_INSTALLATION_ID=${installCreds.installationId}`);
+		console.log(`   SEKUIRE_REFRESH_TOKEN=${installCreds.refreshToken}`);
+	}
+
 	const worker = sdk.createTaskWorker();
 
 	worker.onCommand((cmd) => {

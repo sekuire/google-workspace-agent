@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@sekuire/sdk':
-        specifier: ^0.1.13
-        version: 0.1.13(node-fetch@2.7.0)
+        specifier: ^0.1.14
+        version: 0.1.14(node-fetch@2.7.0)
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
@@ -676,8 +676,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@sekuire/sdk@0.1.13':
-    resolution: {integrity: sha512-glM1oW5iDEX4TQ4PtVgsYE2h8OS6e+HObjf66/WhsLW16NsgsTOLY0/QEIORc4VQiXd/R/SR2Jx1mzGvRPHDKg==}
+  '@sekuire/sdk@0.1.14':
+    resolution: {integrity: sha512-dFwmwXhdB5IoFk37AIOS7YLauH9ojErOAx41+b+ItpEyVO5nrHjcmv5h7/NAmxiYTl6576raDO3PXP2IlH2i/g==}
     engines: {node: '>=14.0.0'}
     peerDependencies:
       '@aws-sdk/client-dynamodb': ^3.500.0
@@ -1940,7 +1940,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.57.1':
     optional: true
 
-  '@sekuire/sdk@0.1.13(node-fetch@2.7.0)':
+  '@sekuire/sdk@0.1.14(node-fetch@2.7.0)':
     dependencies:
       '@anthropic-ai/sdk': 0.71.2(zod@3.25.76)
       '@google/generative-ai': 0.24.1
