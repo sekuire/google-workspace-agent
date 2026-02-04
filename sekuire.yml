@@ -2,7 +2,7 @@ project:
   name: google-workspace-agent
   version: 1.0.0
   description: Sekuire AI Agent for Google Workspace - Create, edit, and manage Google Docs
-  sekuire_id: 72ad085ff800d8983a33354a4065646175f80d9102a4fcf9269edcdb417008ed
+  sekuire_id: 8573fa8aa6712ef844b45e6a43078b12ed4ce9de26db9947db2aba595732fced
 identity:
   model: gemini-3-flash-preview
   system_prompt_path: prompts/system.md
@@ -17,14 +17,17 @@ agent:
     max_tokens: 8192
 capabilities:
   provides:
-    - google:docs:create
-    - google:docs:read
-    - google:docs:update
-    - google:docs:append
-    - google:docs:list
-    - google:drive:search
+  - google:docs:create
+  - google:docs:read
+  - google:docs:update
+  - google:docs:append
+  - google:docs:list
+  - google:drive:search
   requires: []
-  delegates_to: []
+  delegates_to:
+    - agent_type: "slack"
+      capabilities:
+        - "slack:message:send"
 a2a:
   upstream_url: https://google-workspace-agent.sekuire.ai/a2a/tasks
   public_base_url: https://google-workspace-agent.sekuire.ai
@@ -32,18 +35,18 @@ a2a:
 permissions:
   network:
     allowed_hosts:
-      - '*.googleapis.com'
-      - accounts.google.com
-      - oauth2.googleapis.com
-      - localhost
+    - '*.googleapis.com'
+    - accounts.google.com
+    - oauth2.googleapis.com
+    - localhost
     blocked_hosts: []
   filesystem:
     allowed_paths:
-      - ./data
-      - ./credentials
+    - ./data
+    - ./credentials
     blocked_paths:
-      - /etc
-      - /root
+    - /etc
+    - /root
 rate_limits:
   requests:
     max_per_minute: 60
@@ -53,23 +56,23 @@ rate_limits:
     max_per_hour: 200000
 deployment:
   env:
-    - name: GOOGLE_CLIENT_ID
-      required: true
-      secret: true
-    - name: GOOGLE_CLIENT_SECRET
-      required: true
-      secret: true
-    - name: GOOGLE_REFRESH_TOKEN
-      required: true
-      secret: true
-    - name: GOOGLE_API_KEY
-      required: true
-      secret: true
-    - name: SEKUIRE_WORKSPACE_ID
-      required: true
-    - name: SEKUIRE_API_URL
-      required: false
-      default: http://localhost:5556
-    - name: PORT
-      required: false
-      default: '8002'
+  - name: GOOGLE_CLIENT_ID
+    required: true
+    secret: true
+  - name: GOOGLE_CLIENT_SECRET
+    required: true
+    secret: true
+  - name: GOOGLE_REFRESH_TOKEN
+    required: true
+    secret: true
+  - name: GOOGLE_API_KEY
+    required: true
+    secret: true
+  - name: SEKUIRE_WORKSPACE_ID
+    required: true
+  - name: SEKUIRE_API_URL
+    required: false
+    default: http://localhost:5556
+  - name: PORT
+    required: false
+    default: '8002'
