@@ -226,22 +226,34 @@ async function main() {
 		console.log(`   SEKUIRE_REFRESH_TOKEN=${installCreds.refreshToken}`);
 	}
 
-	const worker = sdk.createTaskWorker();
+	let worker: ReturnType<typeof sdk.createTaskWorker> | null = null;
 
-	worker.onCommand((cmd) => {
-		sdk.log(
-			"tool_execution",
-			{ command: cmd.type, reason: cmd.reason },
-			"info",
+	try {
+		worker = sdk.createTaskWorker();
+		worker.onCommand((cmd) => {
+			sdk.log(
+				"tool_execution",
+				{ command: cmd.type, reason: cmd.reason },
+				"info",
+			);
+			if (cmd.type === "terminate") {
+				cleanup();
+			}
+		});
+		await worker.start();
+		console.log("[Sekuire] TaskWorker started - listening for commands");
+	} catch (err) {
+		console.warn(
+			"[Sekuire] TaskWorker not available - running in standalone mode",
 		);
-		if (cmd.type === "terminate") {
-			cleanup();
-		}
-	});
+		console.warn(
+			`[Sekuire] Reason: ${err instanceof Error ? err.message : err}`,
+		);
+	}
 
 	async function cleanup() {
 		console.log("[Shutdown] Cleaning up...");
-		await worker.stop();
+		if (worker) await worker.stop();
 		await sdk.shutdown();
 		process.exit(0);
 	}
@@ -255,9 +267,6 @@ async function main() {
 		console.log("\n[Shutdown] Received SIGINT");
 		cleanup();
 	});
-
-	await worker.start();
-	console.log("[Sekuire] TaskWorker started - listening for commands");
 
 	sdk.log("health", { message: "Agent started", port: config.port }, "info");
 
