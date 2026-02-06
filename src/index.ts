@@ -1,7 +1,10 @@
 import "dotenv/config";
 import express from "express";
+import pino from "pino";
 import { getAgent, SekuireCrypto, SekuireSDK } from "@sekuire/sdk";
 import { GoogleWorkspaceServer } from "./server.js";
+import { GoogleDocsTools } from "./tools/google-docs.js";
+import { GoogleWorkspaceHandler } from "./a2a/handler.js";
 import { GoogleClientFactory } from "./google-factory.js";
 import {
 	InMemoryStateStorage,
@@ -13,6 +16,8 @@ import {
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+
+const log = pino({ name: "google-workspace-agent" });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -58,9 +63,7 @@ async function loadSekuireId(): Promise<string> {
 			projectVersion: version,
 		});
 	} catch (error) {
-		console.warn(
-			"[Config] Could not calculate Sekuire ID from config, using fallback",
-		);
+		log.warn("Could not calculate Sekuire ID from config, using fallback");
 		return `sekuire_google_workspace_${Date.now()}`;
 	}
 }
@@ -68,22 +71,22 @@ async function loadSekuireId(): Promise<string> {
 async function loadConfig(): Promise<Config> {
 	const port = parseInt(process.env.PORT || "8002", 10);
 	const workspaceId = process.env.SEKUIRE_WORKSPACE_ID || "local-workspace";
-	const apiUrl = process.env.SEKUIRE_API_URL || "http://localhost:5556";
+	const apiUrl = process.env.SEKUIRE_API_URL || "";
 
 	const googleClientId = process.env.GOOGLE_CLIENT_ID;
 	const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
 	if (!googleClientId || !googleClientSecret) {
-		console.error("[Config] Missing Google OAuth credentials");
-		console.error("   Required: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET");
-		console.error("   Users will connect their accounts via /auth/google");
+		log.fatal(
+			"Missing Google OAuth credentials: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET",
+		);
 		process.exit(1);
 	}
 
 	let agentId = process.env.SEKUIRE_AGENT_ID || "";
 	if (!agentId) {
 		agentId = await loadSekuireId();
-		console.log(`[Config] Calculated Sekuire ID: ${agentId}`);
+		log.info({ agentId }, "Calculated Sekuire ID");
 	}
 
 	const redirectUri =
@@ -121,12 +124,11 @@ function initializeStorage(): {
 			apiToken: cfApiToken,
 			namespaceId: cfKvNamespaceId,
 		});
-		console.log("[Storage] Cloudflare KV initialized for state/tokens");
+		log.info("Cloudflare KV initialized for state/tokens");
 	} else {
 		state = new InMemoryStateStorage();
-		console.log("[Storage] In-memory storage initialized for state/tokens");
-		console.log(
-			"[Storage] Set CLOUDFLARE_KV_NAMESPACE_ID for persistent storage",
+		log.info(
+			"In-memory storage initialized (set CLOUDFLARE_KV_NAMESPACE_ID for persistent storage)",
 		);
 	}
 
@@ -136,11 +138,10 @@ function initializeStorage(): {
 			apiToken: cfApiToken,
 			databaseId: cfD1DatabaseId,
 		});
-		console.log("[Storage] Cloudflare D1 initialized for memory/context");
+		log.info("Cloudflare D1 initialized for memory/context");
 	} else {
-		console.log("[Storage] No D1 configured - memory will use SDK default");
-		console.log(
-			"[Storage] Set CLOUDFLARE_D1_DATABASE_ID for persistent memory",
+		log.info(
+			"No D1 configured (set CLOUDFLARE_D1_DATABASE_ID for persistent memory)",
 		);
 	}
 
@@ -150,9 +151,7 @@ function initializeStorage(): {
 async function initializeAgent(memory: MemoryStorage | null) {
 	try {
 		if (!process.env.GOOGLE_API_KEY) {
-			console.warn(
-				"[Agent] No GOOGLE_API_KEY set - agent will run in tool-only mode",
-			);
+			log.warn("No GOOGLE_API_KEY set - agent will run in tool-only mode");
 			return undefined;
 		}
 
@@ -161,32 +160,40 @@ async function initializeAgent(memory: MemoryStorage | null) {
 
 		const overrides = memory ? { memory } : undefined;
 		const agent = await getAgent(undefined, overrides, configPath);
-		console.log(`[Agent] Initialized with Gemini (${agent.getLLMProvider()})`);
+		log.info(
+			{ provider: agent.getLLMProvider() },
+			"Agent initialized with Gemini",
+		);
 		return agent;
 	} catch (error) {
-		console.warn(`[Agent] Could not initialize Gemini agent: ${error}`);
+		log.warn({ error }, "Could not initialize Gemini agent");
 		return undefined;
 	}
 }
 
 async function main() {
-	console.log("\n============================================");
-	console.log("  Google Workspace Agent");
-	console.log("  Sekuire - The Trust Protocol for AI Agents");
-	console.log("============================================\n");
+	log.info("Google Workspace Agent - Sekuire");
 
 	const config = await loadConfig();
+
+	const hasValidApiUrl = Boolean(
+		config.apiUrl && !config.apiUrl.includes("localhost"),
+	);
 
 	const sdk = new SekuireSDK({
 		agentId: config.agentId,
 		agentName: "Google Workspace Agent",
-		apiUrl: config.apiUrl,
+		apiUrl: config.apiUrl || "http://localhost:5556",
 		workspaceId: config.workspaceId,
 		privateKey: process.env.SEKUIRE_PRIVATE_KEY,
 		installToken: process.env.SEKUIRE_INSTALL_TOKEN,
-		autoHeartbeat: true,
+		autoHeartbeat: hasValidApiUrl,
 		loggingEnabled: true,
 	});
+
+	if (!hasValidApiUrl) {
+		log.info("No remote API URL configured - heartbeat disabled");
+	}
 
 	const { state: storage, memory } = initializeStorage();
 
@@ -198,8 +205,10 @@ async function main() {
 		},
 		storage,
 	);
-	console.log("[Google] Client factory initialized");
-	console.log(`[Google] OAuth redirect URI: ${config.google.redirectUri}`);
+	log.info(
+		{ redirectUri: config.google.redirectUri },
+		"Google client factory initialized",
+	);
 
 	const agent = await initializeAgent(memory);
 
@@ -217,19 +226,54 @@ async function main() {
 	});
 
 	await sdk.start();
-	console.log("[Sekuire] SDK started - heartbeat and logging active");
+	sdk.log("health", { message: "SDK started - heartbeat and logging active" });
 
 	const installCreds = sdk.getInstallationCredentials();
 	if (installCreds) {
-		console.log("[Sekuire] Installation credentials available for recovery:");
-		console.log(`   SEKUIRE_INSTALLATION_ID=${installCreds.installationId}`);
-		console.log(`   SEKUIRE_REFRESH_TOKEN=${installCreds.refreshToken}`);
+		sdk.log("health", {
+			message: "Installation credentials available for recovery",
+			installation_id: installCreds.installationId,
+			refresh_token: installCreds.refreshToken,
+		});
 	}
 
 	let worker: ReturnType<typeof sdk.createTaskWorker> | null = null;
 
 	try {
 		worker = sdk.createTaskWorker();
+
+		const capabilities = [
+			"google:docs:create",
+			"google:docs:read",
+			"google:docs:update",
+			"google:docs:append",
+			"google:docs:list",
+			"google:drive:search",
+			"task:chat",
+		];
+
+		for (const cap of capabilities) {
+			worker.onTask(cap, async (ctx, input) => {
+				const userEmail = input.user_email as string | undefined;
+				const userId = input.user_id as string | undefined;
+
+				let client = null;
+				if (userId) client = await clientFactory.getClientForUser(userId);
+				else if (userEmail)
+					client = await clientFactory.getClientForEmail(userEmail);
+
+				if (!client) {
+					throw new Error(
+						"User not authorized - connect Google account via /auth/google",
+					);
+				}
+
+				const tools = new GoogleDocsTools(client);
+				const handler = new GoogleWorkspaceHandler(tools, agent);
+				return handler.handleSSETask(ctx, input);
+			});
+		}
+
 		worker.onCommand((cmd) => {
 			sdk.log(
 				"tool_execution",
@@ -241,32 +285,29 @@ async function main() {
 			}
 		});
 		await worker.start();
-		console.log("[Sekuire] TaskWorker started - listening for commands");
+		sdk.log("health", {
+			message: "TaskWorker started - listening for commands",
+		});
 	} catch (err) {
-		console.warn(
-			"[Sekuire] TaskWorker not available - running in standalone mode",
-		);
-		console.warn(
-			`[Sekuire] Reason: ${err instanceof Error ? err.message : err}`,
+		sdk.log(
+			"health",
+			{
+				message: "TaskWorker not available - running in standalone mode",
+				reason: err instanceof Error ? err.message : String(err),
+			},
+			"warn",
 		);
 	}
 
-	async function cleanup() {
-		console.log("[Shutdown] Cleaning up...");
+	async function cleanup(signal?: string) {
+		sdk.log("health", { message: "Shutting down", signal });
 		if (worker) await worker.stop();
 		await sdk.shutdown();
 		process.exit(0);
 	}
 
-	process.on("SIGTERM", () => {
-		console.log("\n[Shutdown] Received SIGTERM");
-		cleanup();
-	});
-
-	process.on("SIGINT", () => {
-		console.log("\n[Shutdown] Received SIGINT");
-		cleanup();
-	});
+	process.on("SIGTERM", () => cleanup("SIGTERM"));
+	process.on("SIGINT", () => cleanup("SIGINT"));
 
 	sdk.log("health", { message: "Agent started", port: config.port }, "info");
 
@@ -274,6 +315,6 @@ async function main() {
 }
 
 main().catch((error) => {
-	console.error("Failed to start Google Workspace agent:", error);
+	log.fatal({ error }, "Failed to start Google Workspace agent");
 	process.exit(1);
 });

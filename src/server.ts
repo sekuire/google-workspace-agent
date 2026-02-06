@@ -11,6 +11,27 @@ import { GoogleClientFactory } from "./google-factory.js";
 import type { StateStorage } from "./storage/index.js";
 import { createA2AAuthMiddleware } from "./middleware/auth.js";
 
+interface JsonRpcRequest {
+	jsonrpc: string;
+	method: string;
+	id: string | number;
+	params?: {
+		taskId?: string;
+		contextId?: string;
+		message?: {
+			role: string;
+			parts: Array<{ type: string; text?: string }>;
+		};
+	};
+}
+
+interface JsonRpcResponse {
+	jsonrpc: string;
+	id: string | number;
+	result?: unknown;
+	error?: { code: number; message: string };
+}
+
 export interface ServerConfig {
 	port: number;
 	agentId: string;
@@ -44,10 +65,31 @@ export class GoogleWorkspaceServer {
 		this.setupRoutes();
 	}
 
+	private log(
+		category:
+			| "tool_execution"
+			| "model_call"
+			| "policy_violation"
+			| "policy_check"
+			| "network_access"
+			| "file_access"
+			| "health",
+		data: Record<string, unknown>,
+		level: "info" | "warn" | "error" = "info",
+	): void {
+		if (this.config.sdk) {
+			this.config.sdk.log(category, data, level);
+			return;
+		}
+		const prefix =
+			level === "error" ? "[ERROR]" : level === "warn" ? "[WARN]" : "[INFO]";
+		console.log(`${prefix} [GWS] ${category}:`, JSON.stringify(data));
+	}
+
 	private setupMiddleware(): void {
 		this.app.use((req: Request, _res: Response, next) => {
 			this.requestCount++;
-			console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+			this.log("network_access", { method: req.method, path: req.path });
 			next();
 		});
 	}
@@ -82,6 +124,13 @@ export class GoogleWorkspaceServer {
 			a2aRateLimiter,
 			a2aAuth,
 			this.handleA2ATask.bind(this),
+		);
+
+		this.app.post(
+			"/a2a",
+			a2aRateLimiter,
+			a2aAuth,
+			this.handleA2AJsonRpc.bind(this),
 		);
 
 		this.app.post("/sekuire/handshake", this.handleHandshake.bind(this));
@@ -241,7 +290,11 @@ export class GoogleWorkspaceServer {
 			}
 
 			const tools = new GoogleDocsTools(client);
-			const handler = new GoogleWorkspaceHandler(tools, this.config.agent);
+			const handler = new GoogleWorkspaceHandler(
+				tools,
+				this.config.agent,
+				this.config.sdk,
+			);
 			const result = await handler.handleTask(taskRequest);
 
 			this.config.sdk?.log(
@@ -280,6 +333,139 @@ export class GoogleWorkspaceServer {
 		}
 	}
 
+	private async handleA2AJsonRpc(req: Request, res: Response): Promise<void> {
+		const rpcRequest = req.body as JsonRpcRequest;
+
+		if (rpcRequest.jsonrpc !== "2.0") {
+			res.json(
+				this.jsonRpcError(rpcRequest.id, -32600, "Invalid JSON-RPC version"),
+			);
+			return;
+		}
+
+		const { method, params, id } = rpcRequest;
+
+		if (method === "tasks/send") {
+			await this.handleJsonRpcSend(params, id, res);
+		} else if (method === "tasks/get") {
+			this.jsonRpcError(
+				id,
+				-32601,
+				"tasks/get not implemented - use tasks/send",
+			);
+			res.json(this.jsonRpcError(id, -32601, "tasks/get not implemented"));
+		} else if (method === "tasks/cancel") {
+			res.json(this.jsonRpcError(id, -32601, "tasks/cancel not implemented"));
+		} else {
+			res.json(this.jsonRpcError(id, -32601, `Method not found: ${method}`));
+		}
+	}
+
+	private async handleJsonRpcSend(
+		params: JsonRpcRequest["params"],
+		id: string | number,
+		res: Response,
+	): Promise<void> {
+		const startTime = Date.now();
+
+		if (!params?.message) {
+			res.json(this.jsonRpcError(id, -32602, "Missing message parameter"));
+			return;
+		}
+
+		const textPart = params.message.parts.find((p) => p.type === "text");
+		if (!textPart?.text) {
+			res.json(this.jsonRpcError(id, -32602, "Missing text in message"));
+			return;
+		}
+
+		let parsedInput: Record<string, unknown> = {};
+		let taskType = "task:chat";
+		let userEmail: string | undefined;
+
+		try {
+			const parsed = JSON.parse(textPart.text);
+			parsedInput = parsed.input || parsed;
+			taskType = parsed.type || parsed.skill || "task:chat";
+			userEmail = parsed.context?.user_email || parsed.user_email;
+		} catch {
+			parsedInput = { message: textPart.text };
+		}
+
+		let client = null;
+		if (userEmail) {
+			client = await this.config.clientFactory.getClientForEmail(userEmail);
+		}
+
+		if (!client) {
+			res.json(
+				this.jsonRpcError(
+					id,
+					-32001,
+					userEmail
+						? `User not authorized: ${userEmail}. Connect via /auth/google`
+						: "Missing user_email in request",
+				),
+			);
+			return;
+		}
+
+		const tools = new GoogleDocsTools(client);
+		const handler = new GoogleWorkspaceHandler(
+			tools,
+			this.config.agent,
+			this.config.sdk,
+		);
+
+		const taskRequest: A2ATaskRequest = {
+			task_id: params.taskId || `a2a_${Date.now()}`,
+			type: taskType,
+			input: parsedInput,
+			context: { user_email: userEmail },
+		};
+
+		const result = await handler.handleTask(taskRequest);
+
+		const a2aTask = {
+			taskId: taskRequest.task_id,
+			contextId: params.contextId,
+			status: {
+				state: result.status,
+				timestamp: new Date().toISOString(),
+			},
+			artifacts: [],
+			history: [
+				params.message,
+				{
+					role: "agent",
+					parts: [{ type: "text", text: JSON.stringify(result.output) }],
+				},
+			],
+		};
+
+		this.config.sdk?.log(
+			"tool_execution",
+			{
+				method: "tasks/send",
+				task_id: taskRequest.task_id,
+				type: taskType,
+				status: result.status,
+				duration_ms: Date.now() - startTime,
+			},
+			result.status === "completed" ? "info" : "error",
+		);
+
+		res.json({ jsonrpc: "2.0", id, result: a2aTask });
+	}
+
+	private jsonRpcError(
+		id: string | number,
+		code: number,
+		message: string,
+	): JsonRpcResponse {
+		return { jsonrpc: "2.0", id, error: { code, message } };
+	}
+
 	private handleAuthStart(req: Request, res: Response): void {
 		const state = req.query.state as string | undefined;
 		const authUrl = this.config.clientFactory.getAuthUrl(state);
@@ -291,6 +477,7 @@ export class GoogleWorkspaceServer {
 		const error = req.query.error as string | undefined;
 
 		if (error) {
+			this.log("network_access", { event: "oauth_error", error }, "error");
 			res.status(400).json({
 				error: "oauth_error",
 				message: error,
@@ -299,6 +486,7 @@ export class GoogleWorkspaceServer {
 		}
 
 		if (!code) {
+			this.log("network_access", { event: "oauth_missing_code" }, "error");
 			res.status(400).json({
 				error: "missing_code",
 				message: "No authorization code received",
@@ -308,6 +496,11 @@ export class GoogleWorkspaceServer {
 
 		try {
 			const token = await this.config.clientFactory.handleOAuthCallback(code);
+			this.log("network_access", {
+				event: "oauth_success",
+				userId: token.userId,
+				email: token.email,
+			});
 			res.json({
 				success: true,
 				message: "Google account connected successfully",
@@ -317,6 +510,14 @@ export class GoogleWorkspaceServer {
 				},
 			});
 		} catch (err) {
+			this.log(
+				"network_access",
+				{
+					event: "oauth_token_exchange_failed",
+					error: err instanceof Error ? err.message : String(err),
+				},
+				"error",
+			);
 			res.status(500).json({
 				error: "token_exchange_failed",
 				message:
@@ -360,7 +561,14 @@ export class GoogleWorkspaceServer {
 			try {
 				signature = await this.config.sdk.sign(client_nonce);
 			} catch (error) {
-				console.warn("[Handshake] Failed to sign client_nonce:", error);
+				this.log(
+					"network_access",
+					{
+						event: "handshake_sign_failed",
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"warn",
+				);
 			}
 		}
 
@@ -431,7 +639,7 @@ export class GoogleWorkspaceServer {
 			},
 			protocolVersions: ["1.0"],
 			capabilities: {
-				streaming: false,
+				streaming: true,
 				pushNotifications: false,
 				extendedAgentCard: false,
 			},
@@ -453,32 +661,13 @@ export class GoogleWorkspaceServer {
 		const { port, agentId, workspaceId, apiUrl } = this.config;
 
 		this.app.listen(port, () => {
-			console.log(`\n[Google Workspace Agent] Starting...`);
-			console.log(`   Agent ID: ${agentId}`);
-			console.log(`   Workspace: ${workspaceId}`);
-			console.log(`   API URL: ${apiUrl}`);
-			console.log(`\n[Endpoints]`);
-			console.log(`   Root:        http://localhost:${port}/`);
-			console.log(`   Health:      http://localhost:${port}/health`);
-			console.log(`   Metrics:     http://localhost:${port}/metrics`);
-			console.log(`   Tasks:       http://localhost:${port}/a2a/tasks`);
-			console.log(
-				`   Agent Card:  http://localhost:${port}/.well-known/agent.json`,
-			);
-			console.log(`   Info:        http://localhost:${port}/agent/info`);
-			console.log(`   Auth:        http://localhost:${port}/auth/google`);
-			console.log(`   Users:       http://localhost:${port}/auth/users`);
-			console.log(`\n[Capabilities]`);
-			console.log(`   - google:docs:create`);
-			console.log(`   - google:docs:read`);
-			console.log(`   - google:docs:update`);
-			console.log(`   - google:docs:append`);
-			console.log(`   - google:docs:list`);
-			console.log(`   - google:drive:search`);
-			console.log(`   - task:chat`);
-			console.log(
-				`\n[Google Workspace Agent] Ready and listening on port ${port}`,
-			);
+			this.log("health", {
+				message: "Agent started",
+				agent_id: agentId,
+				workspace_id: workspaceId,
+				api_url: apiUrl,
+				port,
+			});
 		});
 	}
 

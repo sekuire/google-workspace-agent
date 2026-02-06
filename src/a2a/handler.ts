@@ -1,4 +1,4 @@
-import type { Agent } from "@sekuire/sdk";
+import type { Agent, A2ATaskState, SekuireSDK } from "@sekuire/sdk";
 import { GoogleDocsTools, ToolResult } from "../tools/google-docs.js";
 
 export interface A2ATaskRequest {
@@ -14,7 +14,7 @@ export interface A2ATaskRequest {
 
 export interface A2ATaskResponse {
 	task_id: string;
-	status: "completed" | "failed" | "timeout" | "rejected" | "working";
+	status: A2ATaskState;
 	output?: unknown;
 	error?: {
 		code: string;
@@ -33,11 +33,13 @@ export class GoogleWorkspaceHandler {
 	private capabilities: Map<string, TaskCapability> = new Map();
 	private tools: GoogleDocsTools;
 	private agent?: Agent;
+	private sdk?: SekuireSDK;
 	private taskCount = 0;
 
-	constructor(tools: GoogleDocsTools, agent?: Agent) {
+	constructor(tools: GoogleDocsTools, agent?: Agent, sdk?: SekuireSDK) {
 		this.tools = tools;
 		this.agent = agent;
+		this.sdk = sdk;
 		this.registerCapabilities();
 	}
 
@@ -173,6 +175,33 @@ export class GoogleWorkspaceHandler {
 		return this.taskCount;
 	}
 
+	async handleSSETask(
+		ctx: {
+			taskId: string;
+			workspaceId: string;
+			requesterId?: string;
+			parentTaskId?: string;
+			traceId?: string;
+		},
+		input: Record<string, unknown>,
+	): Promise<unknown> {
+		const taskType =
+			(input.type as string) || (input.capability as string) || "task:chat";
+		const result = await this.handleTask({
+			task_id: ctx.taskId,
+			type: taskType,
+			input,
+			context: {
+				requester_agent_id: ctx.requesterId,
+				trace_id: ctx.traceId,
+			},
+		});
+		if (result.status === "failed") {
+			throw new Error(result.error?.message || "Task failed");
+		}
+		return result.output;
+	}
+
 	async handleTask(request: A2ATaskRequest): Promise<A2ATaskResponse> {
 		const startTime = Date.now();
 		this.taskCount++;
@@ -182,7 +211,7 @@ export class GoogleWorkspaceHandler {
 		const input = request.input || { message: request.description };
 		const timeoutMs = request.timeout_ms || 30000;
 
-		console.log(`[A2A] Received task: ${taskId} (type: ${taskType})`);
+		this.sdk?.log("tool_execution", { task_id: taskId, type: taskType });
 
 		try {
 			const capability = this.capabilities.get(taskType);
@@ -210,7 +239,7 @@ export class GoogleWorkspaceHandler {
 
 				return {
 					task_id: taskId,
-					status: "rejected",
+					status: "failed",
 					error: {
 						code: "unknown_task_type",
 						message: `Unknown task type: ${taskType}. Available: ${this.getCapabilities().join(", ")}`,
@@ -224,9 +253,11 @@ export class GoogleWorkspaceHandler {
 				timeoutMs,
 			);
 
-			console.log(
-				`[A2A] Task ${taskId} completed in ${Date.now() - startTime}ms`,
-			);
+			this.sdk?.log("tool_execution", {
+				task_id: taskId,
+				status: "completed",
+				duration_ms: Date.now() - startTime,
+			});
 
 			return {
 				task_id: taskId,
@@ -239,11 +270,15 @@ export class GoogleWorkspaceHandler {
 				error instanceof Error ? error.message : String(error);
 			const isTimeout = errorMessage.includes("timeout");
 
-			console.error(`[A2A] Task ${taskId} failed: ${errorMessage}`);
+			this.sdk?.log(
+				"tool_execution",
+				{ task_id: taskId, status: "failed", error: errorMessage },
+				"error",
+			);
 
 			return {
 				task_id: taskId,
-				status: isTimeout ? "timeout" : "failed",
+				status: "failed",
 				error: {
 					code: isTimeout ? "timeout" : "execution_error",
 					message: errorMessage,
