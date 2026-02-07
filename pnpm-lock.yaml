@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@sekuire/sdk':
-        specifier: ^0.1.15
-        version: 0.1.15(node-fetch@2.7.0)
+        specifier: ^0.1.16
+        version: 0.1.16(node-fetch@2.7.0)
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
@@ -682,8 +682,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@sekuire/sdk@0.1.15':
-    resolution: {integrity: sha512-Ly7Hg4VtsOXDKqZJp9O5cVaDsaQupa2LXMWVSxvDyGS9Qp437pwqUQbfR42wtmfdfxNjxdnf42ksZR1/K/5tiw==}
+  '@sekuire/sdk@0.1.16':
+    resolution: {integrity: sha512-WxQRqso+3TLK7bMkrx2R2QTcmSYi2/aU/x8pM0X+Md7i9G80XFqdeRTN4DeyoLNF4Efwi2uIwZ/GWXpM9LAd2w==}
     engines: {node: '>=14.0.0'}
     peerDependencies:
       '@aws-sdk/client-dynamodb': ^3.500.0
@@ -918,8 +918,8 @@ packages:
     resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
     engines: {node: '>=12'}
 
-  dotenv@17.2.3:
-    resolution: {integrity: sha512-JVUnt+DUIzu87TABbhPmNfVdBDt18BLOWjMUFJMSi/Qqg7NTYtabbvSNJGOJ7afbRuv9D/lngizHtP7QyLQ+9w==}
+  dotenv@17.2.4:
+    resolution: {integrity: sha512-mudtfb4zRB4bVvdj0xRo+e6duH1csJRM8IukBqfTRvHotn9+LBXB8ynAidP9zHqoRC/fsllXgk4kCKlR21fIhw==}
     engines: {node: '>=12'}
 
   dunder-proto@1.0.1:
@@ -1225,8 +1225,8 @@ packages:
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
 
-  openai@6.17.0:
-    resolution: {integrity: sha512-NHRpPEUPzAvFOAFs9+9pC6+HCw/iWsYsKCMPXH5Kw7BpMxqd8g/A07/1o7Gx2TWtCnzevVRyKMRFqyiHyAlqcA==}
+  openai@6.18.0:
+    resolution: {integrity: sha512-odLRYyz9rlzz6g8gKn61RM2oP5UUm428sE2zOxZqS9MzVfD5/XW8UoEjpnRkzTuScXP7ZbP/m7fC+bl8jCOZZw==}
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
@@ -1489,8 +1489,8 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
-  undici@7.20.0:
-    resolution: {integrity: sha512-MJZrkjyd7DeC+uPZh+5/YaMDxFiiEEaDgbUSVMXayofAkDWF1088CDo+2RPg7B1BuS1qf1vgNE7xqwPxE0DuSQ==}
+  undici@7.21.0:
+    resolution: {integrity: sha512-Hn2tCQpoDt1wv23a68Ctc8Cr/BHpUSfaPYrkajTXOS9IKpxVRx/X5m1K2YkbK2ipgZgxXSgsUinl3x+2YdSSfg==}
     engines: {node: '>=20.18.1'}
 
   unpipe@1.0.0:
@@ -1987,7 +1987,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.57.1':
     optional: true
 
-  '@sekuire/sdk@0.1.15(node-fetch@2.7.0)':
+  '@sekuire/sdk@0.1.16(node-fetch@2.7.0)':
     dependencies:
       '@anthropic-ai/sdk': 0.71.2(zod@3.25.76)
       '@google/generative-ai': 0.24.1
@@ -1999,10 +1999,10 @@ snapshots:
       axios: 1.13.4
       blake3: 2.1.7
       cheerio: 1.2.0
-      dotenv: 17.2.3
+      dotenv: 17.2.4
       eventsource: 2.0.2
       js-yaml: 4.1.1
-      openai: 6.17.0(zod@3.25.76)
+      openai: 6.18.0(zod@3.25.76)
       tweetnacl: 1.0.3
       uuid: 9.0.1
       zod: 3.25.76
@@ -2197,7 +2197,7 @@ snapshots:
       parse5: 7.3.0
       parse5-htmlparser2-tree-adapter: 7.1.0
       parse5-parser-stream: 7.1.2
-      undici: 7.20.0
+      undici: 7.21.0
       whatwg-mimetype: 4.0.0
 
   cluster-key-slot@1.1.2:
@@ -2255,7 +2255,7 @@ snapshots:
 
   dotenv@16.6.1: {}
 
-  dotenv@17.2.3: {}
+  dotenv@17.2.4: {}
 
   dunder-proto@1.0.1:
     dependencies:
@@ -2645,7 +2645,7 @@ snapshots:
     dependencies:
       wrappy: 1.0.2
 
-  openai@6.17.0(zod@3.25.76):
+  openai@6.18.0(zod@3.25.76):
     optionalDependencies:
       zod: 3.25.76
 
@@ -2963,7 +2963,7 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  undici@7.20.0: {}
+  undici@7.21.0: {}
 
   unpipe@1.0.0: {}
 

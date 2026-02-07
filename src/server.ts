@@ -87,6 +87,8 @@ export class GoogleWorkspaceServer {
 	}
 
 	private setupMiddleware(): void {
+		this.app.set("trust proxy", true);
+
 		this.app.use((req: Request, _res: Response, next) => {
 			this.requestCount++;
 			this.log("network_access", { method: req.method, path: req.path });

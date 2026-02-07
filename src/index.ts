@@ -189,6 +189,15 @@ async function main() {
 		installToken: process.env.SEKUIRE_INSTALL_TOKEN,
 		autoHeartbeat: hasValidApiUrl,
 		loggingEnabled: true,
+		capabilities: [
+			"google:docs:create",
+			"google:docs:read",
+			"google:docs:update",
+			"google:docs:append",
+			"google:docs:list",
+			"google:drive:search",
+			"task:chat",
+		],
 	});
 
 	if (!hasValidApiUrl) {
